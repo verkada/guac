@@ -144,6 +144,19 @@ services:
       retries: 3
       start_period: 5s
 
+  guacone:
+    networks: [ frontend ]
+    image: $GUAC_IMAGE
+    command: "/opt/guac/guacone collect --add-vuln-on-ingest --add-eol-on-ingest --add-license-on-ingest files /workspace --gql-addr=http://guac-graphql:8080/query --csub-addr=guac-collectsub:2782"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    depends_on:
+      guac-graphql:
+        condition: service_healthy
+      guac-collectsub:
+        condition: service_healthy
+
 
 networks:
   frontend:
