@@ -1,0 +1,91 @@
+# BUILD.bazel for GUAC binaries
+# This file builds GUAC binaries from the forked repo for use in vguac
+#
+# NOTE: This uses genrule to build binaries using `go build` directly.
+# This requires go.mod and all dependencies to be available in the guac repo.
+# For a more hermetic build, consider using gazelle to generate BUILD files.
+#
+# The binaries are built for linux/arm64 to match vguac's architecture requirements.
+
+package(default_visibility = ["//visibility:public"])
+
+# GUAC GraphQL server binary
+genrule(
+    name = "guacgql",
+    srcs = glob([
+        "cmd/guacgql/**/*.go",
+        "pkg/**/*.go",
+        "internal/**/*.go",
+        "go.mod",
+        "go.sum",
+    ]),
+    outs = ["guacgql"],
+    cmd = """
+        export GOOS=linux
+        export GOARCH=arm64
+        cd $$(dirname $(location go.mod))
+        go build -o $@ ./cmd/guacgql
+    """,
+    visibility = ["//visibility:public"],
+)
+
+# GUAC Ingestor binary
+genrule(
+    name = "guacingest",
+    srcs = glob([
+        "cmd/guacingest/**/*.go",
+        "pkg/**/*.go",
+        "internal/**/*.go",
+        "go.mod",
+        "go.sum",
+    ]),
+    outs = ["guacingest"],
+    cmd = """
+        export GOOS=linux
+        export GOARCH=arm64
+        cd $$(dirname $(location go.mod))
+        go build -o $@ ./cmd/guacingest
+    """,
+    visibility = ["//visibility:public"],
+)
+
+# GUAC Collector binary
+genrule(
+    name = "guaccollect",
+    srcs = glob([
+        "cmd/guaccollect/**/*.go",
+        "pkg/**/*.go",
+        "internal/**/*.go",
+        "go.mod",
+        "go.sum",
+    ]),
+    outs = ["guaccollect"],
+    cmd = """
+        export GOOS=linux
+        export GOARCH=arm64
+        cd $$(dirname $(location go.mod))
+        go build -o $@ ./cmd/guaccollect
+    """,
+    visibility = ["//visibility:public"],
+)
+
+# GUAC CollectSub binary
+genrule(
+    name = "guaccsub",
+    srcs = glob([
+        "cmd/guaccsub/**/*.go",
+        "pkg/**/*.go",
+        "internal/**/*.go",
+        "go.mod",
+        "go.sum",
+    ]),
+    outs = ["guaccsub"],
+    cmd = """
+        export GOOS=linux
+        export GOARCH=arm64
+        cd $$(dirname $(location go.mod))
+        go build -o $@ ./cmd/guaccsub
+    """,
+    visibility = ["//visibility:public"],
+)
+
