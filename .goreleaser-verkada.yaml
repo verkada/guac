@@ -1,0 +1,106 @@
+---
+project_name: guac
+version: 2
+
+env:
+  - CGO_ENABLED=0
+  - PKG=github.com/guacsec/guac/pkg/version
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - main: ./cmd/guaccollect
+    id: guaccollect
+    binary: guaccollect-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - -X {{.Env.PKG}}.Commit={{.FullCommit}}
+      - -X {{.Env.PKG}}.Date={{.Date}}
+      - -X {{.Env.PKG}}.Version={{.Summary}}
+    goos: ['linux']
+    goarch:
+      - amd64
+      - arm64
+
+  - main: ./cmd/guaccsub
+    id: guaccsub
+    binary: guaccsub-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - -X {{.Env.PKG}}.Commit={{.FullCommit}}
+      - -X {{.Env.PKG}}.Date={{.Date}}
+      - -X {{.Env.PKG}}.Version={{.Summary}}
+    goos: ['linux']
+    goarch:
+      - amd64
+      - arm64
+
+  - main: ./cmd/guacgql
+    id: guacgql
+    binary: guacgql-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - -X {{.Env.PKG}}.Commit={{.FullCommit}}
+      - -X {{.Env.PKG}}.Date={{.Date}}
+      - -X {{.Env.PKG}}.Version={{.Summary}}
+    goos: ['linux']
+    goarch:
+      - amd64
+      - arm64
+
+  - main: ./cmd/guacingest
+    id: guacingest
+    binary: guacingest-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - -X {{.Env.PKG}}.Commit={{.FullCommit}}
+      - -X {{.Env.PKG}}.Date={{.Date}}
+      - -X {{.Env.PKG}}.Version={{.Summary}}
+    goos: ['linux']
+    goarch:
+      - amd64
+      - arm64
+
+  - main: ./cmd/guacone
+    id: guacone
+    binary: guacone-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - -X {{.Env.PKG}}.Commit={{.FullCommit}}
+      - -X {{.Env.PKG}}.Date={{.Date}}
+      - -X {{.Env.PKG}}.Version={{.Summary}}
+    goos: ['darwin', 'linux']
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [binary]
+    name_template: "{{ .Binary }}"
+    allow_different_binary_count: true
+
+checksum:
+  name_template: "guac_checksums.txt"
+
+snapshot:
+  version_template: SNAPSHOT-{{ .ShortCommit }}
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  prerelease: auto
+  draft: false
+  replace_existing_draft: true
+  name_template: "Verkada GUAC {{.Tag}}"
+  header: |
+    ## Verkada Custom GUAC Release
+
+    This release contains custom modifications for Verkada's use case:
+    - VEX status mappings for Vigiles SBOM ingestion
+    - Enhanced empty analysis state handling
+    - Improved RFC3339 timestamp parsing
+
+    Base version: GUAC v1.0.1
