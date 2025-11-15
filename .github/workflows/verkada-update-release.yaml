@@ -1,0 +1,142 @@
+name: Update Real Remote to Fork
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      test_branch:
+        description: 'Optional: Branch to test with (leave empty to use main)'
+        required: false
+        type: string
+  schedule:
+    # run every night @ 01:00 am UTC
+    - cron: '1 0 * * *'
+
+jobs:
+  fetch-updates:
+    runs-on: ubuntu-latest
+    environment: upstream-link
+    outputs:
+      start_time: ${{ steps.set_start_time.outputs.time }}
+
+    steps:
+      - name: Set branch name
+        id: set-branch
+        env:
+          TEST_BRANCH: ${{ github.event.inputs.test_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_ENV: ${{ github.ref }}
+        run: |
+          if [ -n "${TEST_BRANCH}" ]; then
+            echo "branch_name=${TEST_BRANCH}" >> ${GITHUB_OUTPUT}
+          elif [ "${EVENT_NAME}" == "push" ]; then
+            echo "branch_name=${GITHUB_REF_ENV#refs/heads/}" >> ${GITHUB_OUTPUT}
+          else
+            echo "branch_name=main" >> ${GITHUB_OUTPUT}
+          fi
+
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.set-branch.outputs.branch_name }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set job start time
+        id: set_start_time
+        run: |
+          echo "time=$(date -u +%s)" >> $GITHUB_OUTPUT
+          echo "Set start time: $(date -u +%s)"
+
+      - name: Update
+        env:
+          BRANCH_NAME: ${{ steps.set-branch.outputs.branch_name }}
+          UPSTREAM_URL: ${{ vars.UPSTREAM_URL }}
+        run: |
+          git fetch -p origin
+          git checkout "${BRANCH_NAME}"
+          
+          # Note: upstream needs to point to the origin repo
+          git remote add upstream "${UPSTREAM_URL}"
+          git fetch -p upstream
+
+          if git diff --quiet origin/${BRANCH_NAME}..upstream/${BRANCH_NAME}; then
+            echo "No changes detected"
+            exit 0
+          fi
+
+          git rebase upstream/${BRANCH_NAME}
+
+      - name: Push Updates
+        id: push-branch
+        env:
+          BRANCH_NAME: ${{ steps.set-branch.outputs.branch_name }}
+        run: |
+          git config --global user.email "device-platform-github-bot@noreply.verkada.com"
+          git config --global user.name "Device Platform GitHub Bot"
+
+          git push
+
+      - name: Create outcome file
+        run: |
+          jq -cn \
+            --arg job_result "${{ job.status }}" \
+            --arg workflow_name "${{ github.workflow }}" \
+            --arg run_id "${{ github.run_id }}" \
+            --arg run_number "${{ github.run_number }}" \
+            --arg start_time "${{ steps.set_start_time.outputs.time }}" \
+            --arg github_event_schedule "${{ github.event.schedule }}" \
+            --arg github_repo_name "${{ github.repository }}" \
+            '{
+              job_success: ($job_result == "success"),
+              job_result: $job_result,
+              workflow_name: $workflow_name,
+              run_id: $run_id,
+              run_number: $run_number,
+              start_time: $start_time,
+              github_event_schedule: $github_event_schedule,
+              github_repo_name: $github_repo_name
+            }' > outcome
+
+      - name: Post job failure status to slack
+        if: ${{ ! success() }}
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          # device-platform-alerts
+          channel-id: 'C083RN0EPEE'
+          # For posting a simple plain text message
+          slack-message: |
+            ${{ github.repository }}: ${{ github.workflow }}: *${{ job.status }}*
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            <@U025XPBNJR5> <@U024C1144BE> <@U083E9XKYDN>
+          # nick, sam, natsumi
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Upload outcome artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ hashFiles('outcome') }}
+          path: outcome
+
+  post-to-turnstile:
+    needs: [fetch-updates]
+    if: always()
+    environment: upstream-link
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/post-to-turnstile.yml
+    with:
+      job_success: ${{ needs.fetch-updates.result == 'success' }}
+      job_result: ${{ needs.fetch-updates.result }}
+      workflow_name: "${{ github.workflow }}"
+      run_id: ${{ github.run_id }}
+      run_number: ${{ github.run_number }}
+      start_time: ${{ needs.fetch-updates.outputs.start_time }}
+      github_event_schedule: ${{ github.event.schedule || '1 0 * * *' }}
+      github_repo_name: ${{ github.repository }}
+      aws_role_arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_NUMBER }}:role/vlnx-mirror-ci-github-action-role
