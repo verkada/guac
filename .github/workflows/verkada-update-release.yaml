@@ -1,9 +1,17 @@
 name: Update Real Remote to Fork
 
 on:
+  push:
+    branches:
+      - natsumi.pang/VSYS-13430_update_guac_automatically
   workflow_dispatch:
+    inputs:
+      test_branch:
+        description: 'Optional: Branch to test with (leave empty to use main)'
+        required: false
+        type: string
   schedule:
-    # run every night @ 01:00 am
+    # run every night @ 01:00 am UTC
     - cron: '1 0 * * *'
 
 jobs:
@@ -12,17 +20,23 @@ jobs:
     environment: upstream-link
     outputs:
       outcomes: ${{ steps.outputs.outputs.results }}
-    strategy:
-      fail-fast: false
-      matrix:
-        branch_name:
-          - main
 
     steps:
-      - name: Checkout main branch
+      - name: Set branch name
+        id: set-branch
+        run: |
+          if [ -n "${{ github.event.inputs.test_branch }}" ]; then
+            echo "branch_name=${{ github.event.inputs.test_branch }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            echo "branch_name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          else
+            echo "branch_name=main" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.branch_name }}
+          ref: ${{ steps.set-branch.outputs.branch_name }}
           submodules: recursive
           fetch-depth: 0
 
@@ -31,23 +45,25 @@ jobs:
 
       - name: Update
         run: |
+          BRANCH_NAME="${{ steps.set-branch.outputs.branch_name }}"
           git fetch -p origin
-          git checkout ${{ matrix.branch_name }}
+          git checkout $BRANCH_NAME
           
           # Note: upstream needs to point to the origin repo
           git remote add upstream "${{ vars.UPSTREAM_URL }}"
           git fetch -p upstream
 
-          if git diff --quiet origin/${{ matrix.branch_name }}..upstream/${{ matrix.branch_name }}; then
+          if git diff --quiet origin/$BRANCH_NAME..upstream/$BRANCH_NAME; then
             echo "No changes detected"
             exit 0
           fi
 
-          git rebase upstream/${{ matrix.branch_name }}
+          git rebase upstream/$BRANCH_NAME
 
       - name: Push Updates
         id: push-branch
         run: |
+          BRANCH_NAME="${{ steps.set-branch.outputs.branch_name }}"
           git config --global user.email "device-platform-github-bot@noreply.verkada.com"
           git config --global user.name "Device Platform GitHub Bot"
 
@@ -62,7 +78,7 @@ jobs:
           # For posting a simple plain text message
           slack-message: |
             ${{ github.repository }}: ${{ github.workflow }}: ${{ job.status }}
-            Branch: ${{ matrix.branch_name }}
+            Branch: ${{ steps.set-branch.outputs.branch_name }}
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -76,7 +92,7 @@ jobs:
           # For posting a simple plain text message
           slack-message: |
             ${{ github.repository }}: ${{ github.workflow }}: *${{ job.status }}*
-            Branch: ${{ matrix.branch_name }}
+            Branch: ${{ steps.set-branch.outputs.branch_name }}
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             <@UCUGH2DGQ> <@U025XPBNJR5> <@U07KST2PE23> <@U024C1144BE> <@U083E9XKYDN>
           # dennis, nick, chris, sam, natsumi
