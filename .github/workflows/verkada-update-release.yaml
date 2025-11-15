@@ -1,0 +1,85 @@
+name: Update Real Remote to Fork
+
+on:
+  workflow_dispatch:
+  schedule:
+    # run every night @ 01:00 am
+    - cron: '1 0 * * *'
+
+jobs:
+  fetch-updates:
+    runs-on: ubuntu-latest
+    environment: upstream-link
+    outputs:
+      outcomes: ${{ steps.outputs.outputs.results }}
+    strategy:
+      fail-fast: false
+      matrix:
+        branch_name:
+          - main
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch_name }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set job start time
+        run: echo "JOB_START_TIME=$(date -u +%s)" >> $GITHUB_ENV
+
+      - name: Update
+        run: |
+          git fetch -p origin
+          git checkout ${{ matrix.branch_name }}
+          
+          # Note: upstream needs to point to the origin repo
+          git remote add upstream "${{ vars.UPSTREAM_URL }}"
+          git fetch -p upstream
+
+          if git diff --quiet origin/${{ matrix.branch_name }}..upstream/${{ matrix.branch_name }}; then
+            echo "No changes detected"
+            exit 0
+          fi
+
+          git rebase upstream/${{ matrix.branch_name }}
+
+      - name: Push Updates
+        id: push-branch
+        run: |
+          git config --global user.email "device-platform-github-bot@noreply.verkada.com"
+          git config --global user.name "Device Platform GitHub Bot"
+
+          git push
+
+      - name: Post job success status to slack
+        if: ${{ success() }}
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          # device-platform-newsfeed
+          channel-id: 'GQ968L7RC'
+          # For posting a simple plain text message
+          slack-message: |
+            ${{ github.repository }}: ${{ github.workflow }}: ${{ job.status }}
+            Branch: ${{ matrix.branch_name }}
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Post job failure status to slack
+        if: ${{ ! success() }}
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          # device-platform-alerts
+          channel-id: 'C083RN0EPEE'
+          # For posting a simple plain text message
+          slack-message: |
+            ${{ github.repository }}: ${{ github.workflow }}: *${{ job.status }}*
+            Branch: ${{ matrix.branch_name }}
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            <@UCUGH2DGQ> <@U025XPBNJR5> <@U07KST2PE23> <@U024C1144BE> <@U083E9XKYDN>
+          # dennis, nick, chris, sam, natsumi
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
