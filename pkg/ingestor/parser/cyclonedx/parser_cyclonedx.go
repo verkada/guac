@@ -135,7 +135,7 @@ func (c *cyclonedxParser) getTopLevelPackage() error {
 	} else {
 		timestamp, err := time.Parse(time.RFC3339, c.cdxBom.Metadata.Timestamp)
 		if err != nil {
-			return fmt.Errorf("SPDX document had invalid created time %q : %w", c.cdxBom.Metadata.Timestamp, err)
+			return fmt.Errorf("CycloneDX document had invalid created time %q : %w", c.cdxBom.Metadata.Timestamp, err)
 		}
 		c.timestamp = timestamp
 	}
