@@ -18,6 +18,10 @@ jobs:
   fetch-updates:
     runs-on: ubuntu-latest
     environment: upstream-link
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      contents: write
     outputs:
       start_time: ${{ steps.set_start_time.outputs.time }}
 
@@ -37,6 +41,14 @@ jobs:
             echo "branch_name=main" >> ${GITHUB_OUTPUT}
           fi
 
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.0
+        with:
+          role-duration-seconds: 900
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_NUMBER }}:role/vlnx-mirror-ci-github-action-role
+          role-session-name: GithubActionTurnstile
+          aws-region: us-west-2
+          
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
@@ -50,14 +62,21 @@ jobs:
           echo "time=$(date -u +%s)" >> $GITHUB_OUTPUT
           echo "Set start time: $(date -u +%s)"
 
+      - name: Configure git
+        run: |
+          git config --global user.email "device-platform-github-bot@noreply.verkada.com"
+          git config --global user.name "Device Platform GitHub Bot"
+
       - name: Update
         env:
           BRANCH_NAME: ${{ steps.set-branch.outputs.branch_name }}
           UPSTREAM_URL: ${{ vars.UPSTREAM_URL }}
+          UPSTREAM_BRANCH: main
         run: |
           git fetch -p origin
           git checkout "${BRANCH_NAME}"
-          
+    
+        
           # Note: upstream needs to point to the origin repo
           git remote add upstream "${UPSTREAM_URL}"
           git fetch -p upstream
@@ -74,31 +93,7 @@ jobs:
         env:
           BRANCH_NAME: ${{ steps.set-branch.outputs.branch_name }}
         run: |
-          git config --global user.email "device-platform-github-bot@noreply.verkada.com"
-          git config --global user.name "Device Platform GitHub Bot"
-
           git push
-
-      - name: Create outcome file
-        run: |
-          jq -cn \
-            --arg job_result "${{ job.status }}" \
-            --arg workflow_name "${{ github.workflow }}" \
-            --arg run_id "${{ github.run_id }}" \
-            --arg run_number "${{ github.run_number }}" \
-            --arg start_time "${{ steps.set_start_time.outputs.time }}" \
-            --arg github_event_schedule "${{ github.event.schedule }}" \
-            --arg github_repo_name "${{ github.repository }}" \
-            '{
-              job_success: ($job_result == "success"),
-              job_result: $job_result,
-              workflow_name: $workflow_name,
-              run_id: $run_id,
-              run_number: $run_number,
-              start_time: $start_time,
-              github_event_schedule: $github_event_schedule,
-              github_repo_name: $github_repo_name
-            }' > outcome
 
       - name: Post job failure status to slack
         if: ${{ ! success() }}
@@ -115,28 +110,124 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 
-      - name: Upload outcome artifact
+      - name: Post to turnstile
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ hashFiles('outcome') }}
-          path: outcome
+        env:
+          JOB_SUCCESS: ${{ job.status == 'success' }}
+          JOB_RESULT: ${{ job.status }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          START_TIME: ${{ steps.set_start_time.outputs.time }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+          GITHUB_REPO_NAME: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          S3_BUCKET: verkada-device-platform-vlnx-ci
+        run: |
+          # Create temp directory
+          TEMP_DIR="$(mktemp -d)"
+          
+          # Capture end time for runtime calculation
+          END_TIME="$(date -u +%s)"
+          
+          # Calculate runtime in seconds if we have start time
+          if [[ "${START_TIME}" =~ ^[0-9]+$ ]]; then
+              # START_TIME is already a Unix timestamp
+              RUNTIME="$((${END_TIME} - ${START_TIME}))"
+          elif [[ "${START_TIME}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+              # START_TIME is an ISO format string, convert to timestamp
+              START_EPOCH="$(date -u -d "${START_TIME}" +%s)"
+              RUNTIME="$((${END_TIME} - ${START_EPOCH}))"
+          else
+              RUNTIME=0
+          fi
+          
+          # Determine success status from job result
+          SUCCESS=true
+          if [ "${JOB_SUCCESS}" != "true" ]; then
+              SUCCESS=false
+          fi
+          
+          # Use the provided cron schedule input directly
+          CRON_SCHEDULE="${GITHUB_EVENT_SCHEDULE:-}"
+          echo "Cron schedule: ${CRON_SCHEDULE:-'not scheduled'}"
+          
+          # Validate required fields before creating JSON
+          echo "Validating required fields..."
+          
+          # Validate start_time is present and valid
+          if [ -z "${START_TIME}" ]; then
+            echo "❌ Error: start_time is required but missing"
+            exit 1
+          fi
+          
+          # Validate start_time is a valid timestamp
+          if ! [[ "${START_TIME}" =~ ^[0-9]+$ ]] && ! [[ "${START_TIME}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+            echo "❌ Error: start_time must be a Unix timestamp or ISO format"
+            exit 1
+          fi
+          
+          # Validate cron_schedule is present and not empty (only for scheduled runs)
+          if [ -z "${CRON_SCHEDULE}" ]; then
+            echo "⚠️  Warning: cron_schedule is empty (workflow not triggered by schedule)"
+            CRON_SCHEDULE=""
+          fi
+          
+          echo "✅ All required fields validated"
+          
+          # Create workflow run URL
+          WORKFLOW_URL="https://github.com/${GITHUB_REPO_NAME}/actions/runs/${RUN_ID}"
+          
+          # Create JSON result file using jq to handle special characters safely
+          jq -n \
+            --arg workflow "${WORKFLOW_NAME}" \
+            --arg run_id "${RUN_ID}" \
+            --arg run_number "${RUN_NUMBER}" \
+            --arg repository "${GITHUB_REPO_NAME}" \
+            --arg commit "${GITHUB_SHA}" \
+            --arg started_at "${START_TIME}" \
+            --arg completed_at "${END_TIME}" \
+            --arg runtime_seconds "${RUNTIME}" \
+            --arg success "${SUCCESS}" \
+            --arg cron_schedule "${CRON_SCHEDULE}" \
+            --arg workflow_url "${WORKFLOW_URL}" \
+            '{
+              workflow: $workflow,
+              run_id: $run_id,
+              run_number: $run_number,
+              repository: $repository,
+              commit: $commit,
+              started_at: $started_at,
+              completed_at: $completed_at,
+              runtime_seconds: $runtime_seconds,
+              success: $success,
+              cron_schedule: $cron_schedule,
+              workflow_url: $workflow_url
+            }' > "${TEMP_DIR}/result.json"
+          
+          # Upload to S3
+          echo "Uploading result to S3..."
+          
+          # Strip "verkada/" prefix from repository name for cleaner S3 paths
+          if [[ "${GITHUB_REPO_NAME}" == "verkada/"* ]]; then
+              CLEAN_REPO_NAME="${GITHUB_REPO_NAME#verkada/}"
+          else
+              CLEAN_REPO_NAME="${GITHUB_REPO_NAME}"
+          fi
+          
+          # Sanitize workflow name to replace forward slashes with hyphens for clean S3 paths
+          CLEAN_WORKFLOW_NAME="${WORKFLOW_NAME//\//-}"
+          
+          S3_PREFIX="s3://${S3_BUCKET}/workflow_results/${CLEAN_REPO_NAME}/${CLEAN_WORKFLOW_NAME}"
+          S3_PATH="${S3_PREFIX}/result-${START_TIME}.json"
+          S3_PATH_LATEST="${S3_PREFIX}/result-latest.json"
+          
+          # Upload the JSON file
+          aws s3 cp "${TEMP_DIR}/result.json" "${S3_PATH}"
+          aws s3 cp "${TEMP_DIR}/result.json" "${S3_PATH_LATEST}"
+          
+          echo "Result uploaded to S3: ${S3_PATH}"
+          
+          # Clean up temp directory
+          rm -rf "${TEMP_DIR}"
 
-  post-to-turnstile:
-    needs: [fetch-updates]
-    if: always()
-    environment: upstream-link
-    permissions:
-      id-token: write
-      contents: read
-    uses: ./.github/workflows/post-to-turnstile.yml
-    with:
-      job_success: ${{ needs.fetch-updates.result == 'success' }}
-      job_result: ${{ needs.fetch-updates.result }}
-      workflow_name: "${{ github.workflow }}"
-      run_id: ${{ github.run_id }}
-      run_number: ${{ github.run_number }}
-      start_time: ${{ needs.fetch-updates.outputs.start_time }}
-      github_event_schedule: ${{ github.event.schedule || '1 0 * * *' }}
-      github_repo_name: ${{ github.repository }}
-      aws_role_arn: arn:aws:iam::${{ secrets.AWS_ACCOUNT_NUMBER }}:role/vlnx-mirror-ci-github-action-role
