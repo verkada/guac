@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - test-branch
   workflow_dispatch:
     inputs:
       test_branch:
@@ -77,16 +78,6 @@ jobs:
           git checkout "${BRANCH_NAME}"
     
         
-          # Note: upstream needs to point to the origin repo
-          git remote add upstream "${UPSTREAM_URL}"
-          git fetch -p upstream
-
-          if git diff --quiet origin/${BRANCH_NAME}..upstream/${BRANCH_NAME}; then
-            echo "No changes detected"
-            exit 0
-          fi
-
-          git rebase upstream/${BRANCH_NAME}
 
       - name: Push Updates
         id: push-branch
