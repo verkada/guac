@@ -326,6 +326,22 @@ var (
 		StatusNotes:      "Vulnerability was falsely identified or associated with this component",
 		KnownSince:       time.Unix(0, 0).UTC(),
 	}
+	// VexData for resolved_with_pedigree status without detail (maps to VexStatusFixed)
+	VexDataResolvedWithPedigreeNoDetail = &generated.VexStatementInputSpec{
+		Status:           generated.VexStatusFixed,
+		VexJustification: generated.VexJustificationNotProvided,
+		Statement:        "",
+		StatusNotes:      "CDX state: resolved_with_pedigree",
+		KnownSince:       time.Unix(0, 0).UTC(),
+	}
+	// VexData for false_positive status without detail (maps to VexStatusNotAffected)
+	VexDataFalsePositiveNoDetail = &generated.VexStatementInputSpec{
+		Status:           generated.VexStatusNotAffected,
+		VexJustification: generated.VexJustificationNotProvided,
+		Statement:        "",
+		StatusNotes:      "CDX state: false_positive",
+		KnownSince:       time.Unix(0, 0).UTC(),
+	}
 	// Vulnerability specs for new test cases
 	VulnSpecResolvedWithPedigree = &generated.VulnerabilityInputSpec{
 		Type:            "cve",
@@ -334,6 +350,15 @@ var (
 	VulnSpecFalsePositive = &generated.VulnerabilityInputSpec{
 		Type:            "cve",
 		VulnerabilityID: "cve-2024-0002",
+	}
+	// Vulnerability specs for no-detail test cases
+	VulnSpecResolvedWithPedigreeNoDetail = &generated.VulnerabilityInputSpec{
+		Type:            "cve",
+		VulnerabilityID: "cve-2024-0003",
+	}
+	VulnSpecFalsePositiveNoDetail = &generated.VulnerabilityInputSpec{
+		Type:            "cve",
+		VulnerabilityID: "cve-2024-0004",
 	}
 	// VulnMetadata for resolved_with_pedigree test
 	CycloneDXResolvedWithPedigreeVulnMetadata = []assembler.VulnMetadataIngest{
@@ -345,11 +370,27 @@ var (
 				Timestamp:  time.Unix(0, 0).UTC(),
 			},
 		},
+		{
+			Vulnerability: VulnSpecResolvedWithPedigreeNoDetail,
+			VulnMetadata: &generated.VulnerabilityMetadataInputSpec{
+				ScoreType:  generated.VulnerabilityScoreTypeCvssv31,
+				ScoreValue: 7.5,
+				Timestamp:  time.Unix(0, 0).UTC(),
+			},
+		},
 	}
 	// VulnMetadata for false_positive test
 	CycloneDXFalsePositiveVulnMetadata = []assembler.VulnMetadataIngest{
 		{
 			Vulnerability: VulnSpecFalsePositive,
+			VulnMetadata: &generated.VulnerabilityMetadataInputSpec{
+				ScoreType:  generated.VulnerabilityScoreTypeCvssv31,
+				ScoreValue: 6.0,
+				Timestamp:  time.Unix(0, 0).UTC(),
+			},
+		},
+		{
+			Vulnerability: VulnSpecFalsePositiveNoDetail,
 			VulnMetadata: &generated.VulnerabilityMetadataInputSpec{
 				ScoreType:  generated.VulnerabilityScoreTypeCvssv31,
 				ScoreValue: 6.0,
@@ -387,7 +428,7 @@ var (
 			HasSBOM: &model.HasSBOMInputSpec{
 				Uri:        "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
 				Algorithm:  "sha256",
-				Digest:     "a9e5e5fcc0939b4e9ddf74a5863ff577bef9bbf8086d99a4dafb8154c451b56f",
+				Digest:     "32981b0c4f87df9243c0e9b8a9600f2e19aae0c0cb76122edfe4a54ef59b9d48",
 				KnownSince: parseRfc3339("2024-01-15T10:30:00Z"),
 			},
 		},
@@ -400,7 +441,7 @@ var (
 			HasSBOM: &model.HasSBOMInputSpec{
 				Uri:        "urn:uuid:4e671687-395b-41f5-a30f-a58921a69b80",
 				Algorithm:  "sha256",
-				Digest:     "738690dd4acaf82b417072354ee631a20a50453278053b558770c6f65906f11d",
+				Digest:     "0731373583749ae046d0992e9b417d4b2960f75d7a979c72fd0b7a258566d520",
 				KnownSince: parseRfc3339("2024-01-15T10:30:00Z"),
 			},
 		},
@@ -410,11 +451,17 @@ var (
 	// The parser splits on "#" and uses "test-component" as pkdIdentifier
 	// Then creates PURL as pkg:guac/pkg/test-component@1.0.0 using guacCDXPkgPurl
 	resolvedWithPedigreePkg, _             = asmhelpers.PurlToPkg("pkg:guac/pkg/test-component@1.0.0")
+	resolvedWithPedigreeNoDetailPkg, _     = asmhelpers.PurlToPkg("pkg:guac/pkg/test-component-no-detail@1.0.0")
 	CycloneDXResolvedWithPedigreeVexIngest = []assembler.VexIngest{
 		{
 			Pkg:           resolvedWithPedigreePkg,
 			Vulnerability: VulnSpecResolvedWithPedigree,
 			VexData:       VexDataResolvedWithPedigree,
+		},
+		{
+			Pkg:           resolvedWithPedigreeNoDetailPkg,
+			Vulnerability: VulnSpecResolvedWithPedigreeNoDetail,
+			VexData:       VexDataResolvedWithPedigreeNoDetail,
 		},
 	}
 	CycloneDXResolvedWithPedigreePredicates = assembler.IngestPredicates{
@@ -428,11 +475,17 @@ var (
 	// The parser splits on "#" and uses "test-component-2" as pkdIdentifier
 	// Then creates PURL as pkg:guac/pkg/test-component-2@1.0.0 using guacCDXPkgPurl
 	falsePositivePkg, _             = asmhelpers.PurlToPkg("pkg:guac/pkg/test-component-2@1.0.0")
+	falsePositiveNoDetailPkg, _     = asmhelpers.PurlToPkg("pkg:guac/pkg/test-component-2-no-detail@1.0.0")
 	CycloneDXFalsePositiveVexIngest = []assembler.VexIngest{
 		{
 			Pkg:           falsePositivePkg,
 			Vulnerability: VulnSpecFalsePositive,
 			VexData:       VexDataFalsePositive,
+		},
+		{
+			Pkg:           falsePositiveNoDetailPkg,
+			Vulnerability: VulnSpecFalsePositiveNoDetail,
+			VexData:       VexDataFalsePositiveNoDetail,
 		},
 	}
 	CycloneDXFalsePositivePredicates = assembler.IngestPredicates{
@@ -2355,29 +2408,36 @@ var (
 	}`
 
 	VertxWebAttestation = `{
-		"type": "https://in-toto.io/Statement/v1",
-		"subject": [
+		  "type": "https://in-toto.io/Statement/v1",
+		  "subject": [
+		    {
+		      "uri": "pkg:maven/io.vertx/vertx-web@4.3.7?type=jar"
+		    }
+		  ],
+		  "predicate_type": "https://in-toto.io/attestation/vulns/v0.1",
+		  "predicate": {
+		    "scanner": {
+		      "uri": "osv.dev",
+		      "version": "0.0.14",
+		      "db": {},
+		      "result": [
 			{
-				"uri": "pkg:maven/io.vertx/vertx-web@4.3.7?type=jar"
-			}
-		],
-		"predicate_type": "https://in-toto.io/attestation/vulns/v0.1",
-		"predicate": {
-			"scanner": {
-				"uri": "osv.dev",
-				"version": "0.0.14",
-				"result": [
-					{
-						"id": "GHSA-53jx-vvf9-4x38"
-					}
-				]
+			  "id": "GHSA-45p5-v273-3qqr"
 			},
-			"metadata": {
-				"scanStartedOn":"2023-02-15T11:10:08.986506-08:00",
-				"scanFinishedOn":"2023-02-15T11:10:08.986506-08:00"
+			{
+			  "id": "GHSA-53jx-vvf9-4x38"
+			},
+			{
+			  "id": "GHSA-h5fg-jpgr-rv9c"
 			}
-		}
-	}`
+		      ]
+		    },
+		    "metadata": {
+		      "scanStartedOn": "2025-12-01T15:19:40.545851224Z",
+		      "scanFinishedOn": "2025-12-01T15:19:40.545851224Z"
+		    }
+		  }
+		}`
 
 	VertxWebCommonPackage = root_package.PackageNode{
 		Purl: "pkg:maven/io.vertx/vertx-web-common@4.3.7?type=jar",
