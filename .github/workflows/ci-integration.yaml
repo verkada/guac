@@ -32,6 +32,7 @@ permissions:
 
 jobs:
   test-integration:
+    if: github.repository != 'verkada/guac'
     runs-on: ubuntu-latest
     name: CI for integration tests
     steps:
@@ -65,6 +66,7 @@ jobs:
         run: make integration-test
 
   end-to-end:
+    if: github.repository != 'verkada/guac'
     name: E2E
     runs-on: ubuntu-latest
     services:
@@ -119,6 +121,7 @@ jobs:
         GUAC_DIR: /home/runner/work/guac/guac
 
   tilt-ci:
+    if: github.repository != 'verkada/guac'
     name: Run 'tilt ci'
     runs-on:
       labels: ubuntu-latest

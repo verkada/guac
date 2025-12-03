@@ -123,13 +123,13 @@ jobs:
           path: outcome
 
   post-to-turnstile:
-    needs: [fetch-updates]
     if: always()
+    needs: [fetch-updates]
+    uses: ./.github/workflows/post-to-turnstile.yml
     environment: upstream-link
     permissions:
       id-token: write
       contents: read
-    uses: ./.github/workflows/post-to-turnstile.yml
     with:
       job_success: ${{ needs.fetch-updates.result == 'success' }}
       job_result: ${{ needs.fetch-updates.result }}
