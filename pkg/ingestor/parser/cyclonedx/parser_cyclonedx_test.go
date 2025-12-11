@@ -241,6 +241,26 @@ func Test_cyclonedxParser(t *testing.T) {
 	}
 }
 
+func TestCycloneDXParserClearsDocAfterParse(t *testing.T) {
+	ctx := logging.WithLogger(context.Background())
+	p := &cyclonedxParser{}
+
+	doc := &processor.Document{
+		Blob:   testdata.CycloneDXDistrolessExample,
+		Format: processor.FormatJSON,
+		Type:   processor.DocumentCycloneDX,
+	}
+
+	if err := p.Parse(ctx, doc); err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	// Build predicates to mirror normal flow, then ensure the document is released.
+	_ = p.GetPredicates(ctx)
+	if p.doc != nil {
+		t.Fatalf("expected doc to be cleared after GetPredicates, got non-nil")
+	}
+}
+
 func Test_cyclonedxParser_addRootPackage(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -383,6 +383,9 @@ func getArtifactInput(subject string) (*model.ArtifactInputSpec, error) {
 
 func (c *cyclonedxParser) GetPredicates(ctx context.Context) *assembler.IngestPredicates {
 	logger := logging.FromContext(ctx)
+	defer func() {
+		c.doc = nil
+	}()
 	preds := &assembler.IngestPredicates{}
 	var topLevelArts []*model.ArtifactInputSpec
 	var topLevelPkgs []*model.PkgInputSpec
