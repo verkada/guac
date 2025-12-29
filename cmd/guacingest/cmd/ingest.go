@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/guacsec/guac/pkg/blob"
 	"github.com/guacsec/guac/pkg/cli"
@@ -91,11 +92,27 @@ func ingest(cmd *cobra.Command, args []string) {
 	}
 
 	if strings.HasPrefix(opts.pubsubAddr, "nats://") {
-		// initialize jetstream
+		// initialize jetstream with retry logic
 		// TODO: pass in credentials file for NATS secure login
 		jetStream := emitter.NewJetStream(opts.pubsubAddr, "", "")
-		if err := jetStream.JetStreamInit(ctx); err != nil {
-			logger.Fatalf("jetStream initialization failed with error: %v", err)
+
+		const (
+			initialBackoff = 1 * time.Second
+			maxBackoff     = 30 * time.Second
+		)
+		backoff := initialBackoff
+
+		for {
+			if err := jetStream.JetStreamInit(ctx); err != nil {
+				logger.Warnf("jetStream initialization failed: %v, retrying in %v", err, backoff)
+				time.Sleep(backoff)
+				backoff = backoff * 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
+			break
 		}
 		defer jetStream.Close()
 	}
@@ -145,9 +162,39 @@ func ingest(cmd *cobra.Command, args []string) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := process.Subscribe(ctx, emit, blobStore, pubsub); err != nil {
-			logger.Errorf("processor ended with error: %v", err)
-			sigs <- syscall.SIGTERM
+		const (
+			initialBackoff = 1 * time.Second
+			maxBackoff     = 60 * time.Second
+			backoffFactor  = 2.0
+		)
+		backoff := initialBackoff
+
+		for {
+			err := process.Subscribe(ctx, emit, blobStore, pubsub)
+			if err != nil {
+				// Check if context was cancelled (graceful shutdown)
+				if errors.Is(err, context.Canceled) {
+					logger.Infof("processor shutting down gracefully")
+					return
+				}
+
+				logger.Errorf("processor ended with error: %v, retrying in %v", err, backoff)
+
+				select {
+				case <-ctx.Done():
+					logger.Infof("processor context cancelled during backoff")
+					return
+				case <-time.After(backoff):
+					// Increase backoff for next retry, capped at maxBackoff
+					backoff = time.Duration(float64(backoff) * backoffFactor)
+					if backoff > maxBackoff {
+						backoff = maxBackoff
+					}
+				}
+			} else {
+				// Subscribe returned without error (clean shutdown)
+				return
+			}
 		}
 	}()
 
