@@ -93,7 +93,7 @@ jobs:
         env:
           BRANCH_NAME: ${{ steps.set-branch.outputs.branch_name }}
         run: |
-          git push
+          git push --force-with-lease
 
       - name: Post job failure status to slack
         if: ${{ ! success() }}
