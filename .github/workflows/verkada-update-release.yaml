@@ -1,9 +1,6 @@
 name: Update Real Remote to Fork
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       test_branch:
@@ -30,13 +27,9 @@ jobs:
         id: set-branch
         env:
           TEST_BRANCH: ${{ github.event.inputs.test_branch }}
-          EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF_ENV: ${{ github.ref }}
         run: |
           if [ -n "${TEST_BRANCH}" ]; then
             echo "branch_name=${TEST_BRANCH}" >> ${GITHUB_OUTPUT}
-          elif [ "${EVENT_NAME}" == "push" ]; then
-            echo "branch_name=${GITHUB_REF_ENV#refs/heads/}" >> ${GITHUB_OUTPUT}
           else
             echo "branch_name=main" >> ${GITHUB_OUTPUT}
           fi
