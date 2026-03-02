@@ -22,6 +22,7 @@ jobs:
     permissions:
       id-token: write
       contents: write
+      workflows: write
     outputs:
       start_time: ${{ steps.set_start_time.outputs.time }}
 
