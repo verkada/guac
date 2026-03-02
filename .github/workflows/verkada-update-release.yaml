@@ -49,12 +49,20 @@ jobs:
           role-session-name: GithubActionTurnstile
           aws-region: us-west-2
           
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.VERKADA_GUAC_FORK_CI_BOT_APP_ID }}
+          private-key: ${{ secrets.VERKADA_GUAC_FORK_CI_BOT_PRIVATE_KEY }}
+
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.set-branch.outputs.branch_name }}
           submodules: recursive
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Set job start time
         id: set_start_time
