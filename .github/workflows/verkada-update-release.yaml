@@ -39,7 +39,7 @@ jobs:
           elif [ "${EVENT_NAME}" == "push" ]; then
             echo "branch_name=${GITHUB_REF_ENV#refs/heads/}" >> ${GITHUB_OUTPUT}
           elif [ "${EVENT_NAME}" == "pull_request" ]; then
-            echo "branch_name=test/pr-label-$(date -u +%Y%m%d%H%M%S)" >> ${GITHUB_OUTPUT}
+            echo "branch_name=test-carjune" >> ${GITHUB_OUTPUT}
           else
             echo "branch_name=main" >> ${GITHUB_OUTPUT}
           fi
