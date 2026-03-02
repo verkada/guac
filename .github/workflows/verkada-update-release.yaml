@@ -83,7 +83,7 @@ jobs:
             exit 0
           fi
 
-          git rebase upstream/${BRANCH_NAME}
+          git rebase upstream/main
 
       - name: Push Updates
         id: push-branch
