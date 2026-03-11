@@ -22,7 +22,51 @@ import (
 	"strings"
 
 	model "github.com/guacsec/guac/pkg/assembler/clients/generated"
+	"github.com/github/go-spdx/v2/spdxexp/spdxlicenses"
 )
+
+// spdxIDCanonical maps lowercased SPDX license IDs to their canonical casing.
+// Built once at init time for O(1) lookups.
+var spdxIDCanonical map[string]string
+
+func init() {
+	active := spdxlicenses.GetLicenses()
+	deprecated := spdxlicenses.GetDeprecated()
+	spdxIDCanonical = make(map[string]string, len(active)+len(deprecated))
+	for _, id := range active {
+		spdxIDCanonical[strings.ToLower(id)] = id
+	}
+	for _, id := range deprecated {
+		spdxIDCanonical[strings.ToLower(id)] = id
+	}
+}
+
+// IsValidSPDXID returns true if the given identifier is a recognized SPDX license ID
+// (case-insensitive). This covers both active and deprecated SPDX licenses.
+func IsValidSPDXID(id string) bool {
+	_, ok := spdxIDCanonical[strings.ToLower(id)]
+	return ok
+}
+
+// LookupSPDXIDByName returns the SPDX license ID for a given license name
+// (case-insensitive). Returns the ID and true if found, or empty string and
+// false if no match. This checks if the name is already a valid SPDX ID, or
+// if it matches a known SPDX license full name (e.g. "Apache License 2.0" -> "Apache-2.0").
+func LookupSPDXIDByName(name string) (string, bool) {
+	lower := strings.ToLower(name)
+
+	// Check if the name is already a valid SPDX ID
+	if canonical, ok := spdxIDCanonical[lower]; ok {
+		return canonical, true
+	}
+
+	// Look up by full license name
+	if id, ok := spdxNameToID[lower]; ok {
+		return id, true
+	}
+
+	return "", false
+}
 
 var ignore = []string{
 	"AND",

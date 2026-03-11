@@ -1497,6 +1497,7 @@ var (
 		},
 	}
 	customLincenseText   = "This is the text of the custom license I wrote"
+	customLicenseText2   = "Custom license 2"
 	cdxLegalCertifyLegal = []assembler.CertifyLegalIngest{
 		{
 			Pkg: cdxNetbasePack,
@@ -1753,6 +1754,10 @@ var (
 					Name:   "LicenseRef-a7fb6b15",
 					Inline: &customLincenseText,
 				},
+				{
+					Name:   "LicenseRef-59a01e67",
+					Inline: &customLicenseText2,
+				},
 			},
 			CertifyLegal: &model.CertifyLegalInputSpec{
 				DeclaredLicense: "Apache-2.0 AND LicenseRef-a7fb6b15 AND LicenseRef-59a01e67",
@@ -1806,6 +1811,10 @@ var (
 				{
 					Name:   "LicenseRef-a7fb6b15",
 					Inline: &customLincenseText,
+				},
+				{
+					Name:   "LicenseRef-59a01e67",
+					Inline: &customLicenseText2,
 				},
 			},
 			CertifyLegal: &model.CertifyLegalInputSpec{

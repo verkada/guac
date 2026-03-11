@@ -21,6 +21,73 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestLookupSPDXIDByName(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		wantID string
+		wantOK bool
+	}{
+		{
+			name:   "exact SPDX ID",
+			input:  "MIT",
+			wantID: "MIT",
+			wantOK: true,
+		},
+		{
+			name:   "SPDX ID case insensitive",
+			input:  "mit",
+			wantID: "MIT",
+			wantOK: true,
+		},
+		{
+			name:   "full license name",
+			input:  "Apache License 2.0",
+			wantID: "Apache-2.0",
+			wantOK: true,
+		},
+		{
+			name:   "full license name case insensitive",
+			input:  "apache license 2.0",
+			wantID: "Apache-2.0",
+			wantOK: true,
+		},
+		{
+			name:   "full name MIT License",
+			input:  "MIT License",
+			wantID: "MIT",
+			wantOK: true,
+		},
+		{
+			name:   "GPL full name",
+			input:  "GNU General Public License v3.0 only",
+			wantID: "GPL-3.0-only",
+			wantOK: true,
+		},
+		{
+			name:   "unknown license",
+			input:  "My Custom License",
+			wantID: "",
+			wantOK: false,
+		},
+		{
+			name:   "empty string",
+			input:  "",
+			wantID: "",
+			wantOK: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotID, gotOK := LookupSPDXIDByName(tt.input)
+			if gotID != tt.wantID || gotOK != tt.wantOK {
+				t.Errorf("LookupSPDXIDByName(%q) = (%q, %v), want (%q, %v)",
+					tt.input, gotID, gotOK, tt.wantID, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestCombineLicense(t *testing.T) {
 	tests := []struct {
 		name     string

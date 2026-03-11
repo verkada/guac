@@ -288,11 +288,11 @@ func (c *cyclonedxParser) getLicenseInformation(comp cdx.Component) error {
 				if compLicenses[0].License == nil {
 					return nil
 				}
-				license := getLicenseFromName(c, compLicenses[0])
-				if license != "" {
+				licenses := getLicensesFromName(c, compLicenses[0])
+				if len(licenses) > 0 {
 					cl := &model.CertifyLegalInputSpec{
 						Justification:     justification,
-						DeclaredLicense:   license,
+						DeclaredLicense:   common.CombineLicense(licenses),
 						DiscoveredLicense: "",
 						TimeScanned:       c.timestamp,
 						Attribution:       comp.Copyright,
@@ -312,7 +312,7 @@ func (c *cyclonedxParser) getLicenseInformation(comp cdx.Component) error {
 				if compLicense.License == nil {
 					continue
 				}
-				licenses = append(licenses, getLicenseFromName(c, compLicense))
+				licenses = append(licenses, getLicensesFromName(c, compLicense)...)
 			}
 			if len(licenses) > 0 {
 				cl := &model.CertifyLegalInputSpec{
@@ -329,21 +329,95 @@ func (c *cyclonedxParser) getLicenseInformation(comp cdx.Component) error {
 	return nil
 }
 
-func getLicenseFromName(c *cyclonedxParser, compLicense cdx.LicenseChoice) string {
-	var license string
-	if compLicense.License.Name != "" && compLicense.License.Name != "UNKNOWN" {
-		if compLicense.License.Text != nil {
-			license = common.HashLicense(compLicense.License.Name)
-			c.licenseInLine[license] = compLicense.License.Text.Content
-		} else if compLicense.License.BOMRef != "" {
-			license = compLicense.License.BOMRef
-		} else {
-			license = common.HashLicense(compLicense.License.Name)
+// getLicensesFromName extracts license identifiers from a CycloneDX license choice.
+// Returns multiple identifiers when the name field contains a compound expression
+// (e.g. "GPL-2.0-or-later & LGPL-2.1-or-later"). For valid SPDX identifiers found
+// in the name field, the identifier is used directly instead of being hashed.
+func getLicensesFromName(c *cyclonedxParser, compLicense cdx.LicenseChoice) []string {
+	// When name is empty/UNKNOWN, use the SPDX ID field directly
+	if compLicense.License.Name == "" || compLicense.License.Name == "UNKNOWN" {
+		if compLicense.License.ID != "" {
+			return []string{compLicense.License.ID}
 		}
-	} else {
-		license = compLicense.License.ID
+		return nil
 	}
-	return license
+
+	// If inline text is provided, hash the name and store the text
+	if compLicense.License.Text != nil {
+		license := common.HashLicense(compLicense.License.Name)
+		c.licenseInLine[license] = compLicense.License.Text.Content
+		return []string{license}
+	}
+
+	if compLicense.License.BOMRef != "" {
+		return []string{compLicense.License.BOMRef}
+	}
+
+	// The name field may contain a single SPDX ID, a compound expression with "&",
+	// or a free-form license name. Split on common separators and resolve each part.
+	parts := splitLicenseName(compLicense.License.Name)
+	var licenses []string
+	for _, part := range parts {
+		if spdxID, ok := common.LookupSPDXIDByName(part); ok {
+			// Resolved to a known SPDX ID (either the name was already an ID,
+			// or it matched a full license name like "Apache License 2.0" -> "Apache-2.0")
+			licenses = append(licenses, spdxID)
+		} else {
+			license := common.HashLicense(part)
+			// Store the original name as inline so it's preserved through ParseLicenses
+			c.licenseInLine[license] = part
+			licenses = append(licenses, license)
+		}
+	}
+	return licenses
+}
+
+// splitLicenseName splits a license name on common separators ("&", ",", "AND", "OR")
+// and trims whitespace from each part. Returns individual license identifiers.
+func splitLicenseName(name string) []string {
+	// Normalize common non-SPDX separators to a common delimiter
+	normalized := strings.ReplaceAll(name, "&", "\x00")
+	normalized = strings.ReplaceAll(normalized, ",", "\x00")
+
+	parts := strings.Split(normalized, "\x00")
+	var result []string
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		// Further split on " AND " / " OR " (SPDX operators that may appear in name field)
+		for _, sub := range splitOnSPDXOperators(p) {
+			sub = strings.TrimSpace(sub)
+			if sub != "" {
+				result = append(result, sub)
+			}
+		}
+	}
+	return result
+}
+
+// splitOnSPDXOperators splits a string on SPDX logical operators (AND, OR) that appear
+// as whole words separated by spaces. Does not split on operators within identifiers.
+func splitOnSPDXOperators(s string) []string {
+	words := strings.Fields(s)
+	var result []string
+	var current []string
+	for _, w := range words {
+		upper := strings.ToUpper(w)
+		if upper == "AND" || upper == "OR" {
+			if len(current) > 0 {
+				result = append(result, strings.Join(current, " "))
+				current = nil
+			}
+		} else {
+			current = append(current, w)
+		}
+	}
+	if len(current) > 0 {
+		result = append(result, strings.Join(current, " "))
+	}
+	return result
 }
 
 func ParseCycloneDXBOM(doc *processor.Document) (*cdx.BOM, error) {
