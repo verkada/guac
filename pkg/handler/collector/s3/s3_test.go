@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +30,93 @@ import (
 	"github.com/guacsec/guac/pkg/handler/collector/s3/messaging"
 	"github.com/guacsec/guac/pkg/handler/processor"
 )
+
+func TestSqsMessageGetItem(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "plain key",
+			key:  "camera/build/sbom.json",
+			want: "camera/build/sbom.json",
+		},
+		{
+			name: "access controller path with spaces",
+			key:  "Access+Controllers/Clooney/build/sbom.json",
+			want: "Access Controllers/Clooney/build/sbom.json",
+		},
+		{
+			name: "command connector path with multiple spaces",
+			key:  "Command+Connector/BOX+OS/build/sbom.json",
+			want: "Command Connector/BOX OS/build/sbom.json",
+		},
+		{
+			name: "percent encoded characters",
+			key:  "Access%20Controllers%2FClooney%2Fsbom%23%25.json",
+			want: "Access Controllers/Clooney/sbom#%.json",
+		},
+		{
+			name: "literal plus and space",
+			key:  "camera%2Bcv/build+name/sbom.json",
+			want: "camera+cv/build name/sbom.json",
+		},
+		{
+			name: "decode only once",
+			key:  "camera/build%2520name/sbom%252B.json",
+			want: "camera/build%20name/sbom%2B.json",
+		},
+		{
+			name: "unicode",
+			key:  "camera/%E6%B5%8B%E8%AF%95/sbom.json",
+			want: "camera/测试/sbom.json",
+		},
+		{
+			name:    "invalid percent escape",
+			key:     "camera/sbom%ZZ.json",
+			wantErr: true,
+		},
+		{
+			name:    "incomplete percent escape",
+			key:     "camera/sbom%2",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := &messaging.SqsMessage{
+				Records: []messaging.SqsRecord{
+					{S3: messaging.SqsS3{Object: messaging.SqsObject{Key: tt.key}}},
+				},
+			}
+			for i := 0; i < 2; i++ {
+				got, err := msg.GetItem()
+				if tt.wantErr {
+					var escapeErr url.EscapeError
+					if !errors.As(err, &escapeErr) {
+						t.Fatalf("GetItem() error = %v, want URL escape error", err)
+					}
+				} else if err != nil {
+					t.Fatalf("GetItem() error = %v", err)
+				}
+				if got != tt.want {
+					t.Errorf("GetItem() = %q, want %q", got, tt.want)
+				}
+				if msg.Records[0].S3.Object.Key != tt.key {
+					t.Fatal("GetItem() mutated the notification key")
+				}
+			}
+		})
+	}
+	t.Run("missing records", func(t *testing.T) {
+		got, err := (&messaging.SqsMessage{}).GetItem()
+		if err == nil || got != "" {
+			t.Fatalf("GetItem() = %q, %v, want empty key and error", got, err)
+		}
+	})
+}
 
 // Test message
 type TestMessage struct {

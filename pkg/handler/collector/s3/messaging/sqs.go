@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -76,7 +77,12 @@ func (m *SqsMessage) GetItem() (string, error) {
 	if len(m.Records) == 0 {
 		return "", fmt.Errorf("error getting item from message %s", m)
 	}
-	return m.Records[0].S3.Object.Key, nil
+	// S3 notification keys use form URL encoding, including "+" for spaces.
+	item, err := url.QueryUnescape(m.Records[0].S3.Object.Key)
+	if err != nil {
+		return "", fmt.Errorf("error decoding S3 object key: %w", err)
+	}
+	return item, nil
 }
 
 func NewSqsProvider(mpConfig MessageProviderConfig) (SqsProvider, error) {
